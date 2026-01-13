@@ -145,3 +145,79 @@ if you delete a pod new one is spun up, if more than required are created(manual
 
 
 # Deployments
+
+provide ability to upgrade instances by rolling updates, undo changes and resume changes
+
+basic structure same as replicaSets->
+
+apiVersion: apps/v1
+kind: Deployment
+metadata: (name(string), labels(dict(app, type etc))(siblings) etc)(in matadata only what k8s considers metadata, but labels => your wish)
+
+spec: (object info)(template: (pod template ie the content of pod.yml exept apiVersion and kind))(replicas: number required)(selector: helps replica set identify what pods fall under it, as can manage pods existing before the replica set creation (matchLabels: key-pair to match with the metadata of the pods))
+
+## rollout and updates
+
+when we create a deployment it triggers a new rollout which creates a new replica set recorded as a new deployment revision. when the container is upgraded a new deployment revision is created(revision 2). This helps us track the version of deployment and rollback if necessary!! 
+
+kubectl rollout status deployment/myapp-deployment(deployment name)
+
+kubectl rollout history deployment/myapp-deployment (deployment name) (gives revision+history) (to track teh deployement add the --record tag while creating/applying the deployment)
+
+
+how do you upgrade the replicas of your instance:
+
+- destroy all then recreate(issue: downtime, not used)
+
+- kubectl set image deployment/httpd-frontend httpd=httpd:2.4(would cause mis match with config file)
+
+- slowly one-by-one, rolling updates(default assumed just apply) when you create  a deploment a replica set is created automayically, when you are updating a new replica set is created as the pods in the newer RS are created as the ones in the older RS are deleted
+
+to rollback: kubectl rollout undo deployment deployment-name (cant do if the older replica sets have been deleted)
+
+
+# Networking
+
+Each pod gets its own internal Pod IP. Pods are attached to a virtual network created by the CNI plugin, not directly to the node IP (example Pod CIDR 10.244.0.0/16, so Pod IPs like 10.244.0.2, 10.244.0.3, etc). Pod IP changes when pods are recreated.
+
+Kubernetes expects networking to be set up such that all pods can communicate with each other across nodes without NAT (using CNI plugins like Flannel, Calico, Cilium, NSX, Cisco), which creates a cluster-wide network with unique IPs and routing, allowing pod-to-pod communication inside the cluster (pod → CNI → pod).
+
+On top of this network, Kubernetes provides Services with ClusterIP, which gives a stable internal virtual IP and DNS name for accessing a group of pods and load-balancing traffic between them. Pods inside the same cluster usually communicate using the Service ClusterIP instead of direct Pod IPs because Pod IPs change, while ClusterIP remains stable (pod → ClusterIP → CNI → pod). ClusterIP is accessible only inside the cluster and is not exposed to external users.
+
+# Services
+
+enable communication bw components within and outside of the application.
+
+connections: 
+
+1) users->app
+
+- by sshing into node(not ideal)
+- service acts as a middle men, listen to port on the node and forward req on that port to a port on the pod running the application this is  "nodePort(the port on node) service" teh target port is on the pod
+
+2) fend node->bend node
+
+cluster ip creates a virtual ip inside the cluster to allow communication bw set fend and bendservers
+
+3) node to external service
+
+loadbalancer service
+
+
+# creating services
+
+apiVerison: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: NodePort
+  ports: 
+   - targetPort: 80(on pod)(default: same as port)
+     port: 80(on service server has a cluster ip)(mandatory)
+     nodePort: 30008(port on node)
+  selector:
+    app: my-app
+
+many pods: no problem as matched using labels
+pods across nodes: services spans across all nodes, so can access app using ip of any node in cluster but same port-number available
